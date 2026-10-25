@@ -29,4 +29,9 @@ function obterBanco() {
     return banco;
 }
 
-module.exports = { conectarBanco, obterBanco };
+async function fecharBanco() {
+    await client.close();
+    banco = null;
+}
+
+module.exports = { conectarBanco, obterBanco, fecharBanco };
