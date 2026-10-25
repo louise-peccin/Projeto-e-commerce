@@ -3,6 +3,7 @@ const readline = require("readline");
 const Produto = require("./Produto");
 const Categoria = require("./Categoria");
 const Vendedor = require("./Vendedor");
+const { registrarErro } = require("./logger");
 
 const rl = readline.createInterface({
     input: process.stdin,
@@ -13,32 +14,70 @@ function perguntar(msg) {
     return new Promise(resolve => rl.question(msg, resolve));
 }
 
+function converterNumero(valor) {
+    return valor.trim() === "" ? NaN : Number(valor);
+}
 
-async function dadosProduto() {
+async function dadosProduto(atualizar = false) {
     const nome = await perguntar("Nome: ");
     const valor = await perguntar("Preço: ");
     const quantidade = await perguntar("Quantidade: ");
     const categoriaId = await perguntar("ID da categoria: ");
     const vendedorId = await perguntar("ID do vendedor: ");
 
-    const preco = valor.trim() === "" ? NaN : Number(valor);
-    const qtde = quantidade.trim() === "" ? NaN : Number(quantidade);
+    const dados = {
+        nome,
+        preco: converterNumero(valor),
+        qtde: converterNumero(quantidade),
+        categoriaId,
+        vendedorId
+    };
 
-    return { nome, preco, qtde, categoriaId, vendedorId };
+    if (atualizar) {
+        if (nome === "") delete dados.nome;
+        if (valor.trim() === "") delete dados.preco;
+        if (quantidade.trim() === "") delete dados.qtde;
+        if (categoriaId === "") delete dados.categoriaId;
+        if (vendedorId === "") delete dados.vendedorId;
+    }
+
+    return dados;
 }
 
-
-async function dadosCategoria() {
+async function dadosCategoria(atualizar = false) {
     const nome = await perguntar("Nome: ");
     const descricao = await perguntar("Descrição: ");
-    return { nome, descricao };
+
+    const dados = { nome, descricao };
+
+    if (atualizar) {
+        if (nome === "") delete dados.nome;
+        if (descricao === "") delete dados.descricao;
+    }
+
+    return dados;
 }
 
-async function dadosVendedor() {
+async function dadosVendedor(atualizar = false) {
     const nome = await perguntar("Nome: ");
     const email = await perguntar("E-mail: ");
     const telefone = await perguntar("Telefone: ");
-    return { nome, email, telefone };
+
+    const dados = { nome, email, telefone };
+
+    if (atualizar) {
+        if (nome === "") delete dados.nome;
+        if (email === "") delete dados.email;
+        if (telefone === "") delete dados.telefone;
+    }
+
+    return dados;
+}
+
+async function solicitarDados(tipo, atualizar = false) {
+    if (tipo === "produto") return dadosProduto(atualizar);
+    if (tipo === "categoria") return dadosCategoria(atualizar);
+    return dadosVendedor(atualizar);
 }
 
 async function gerenciar(tipo) {
@@ -65,46 +104,67 @@ async function gerenciar(tipo) {
         op = (await perguntar("Escolha: ")).trim();
 
         try {
-            if (op === "1") {
-                let dados;
+            switch (op) {
+                case "1": {
+                    const dados = await solicitarDados(tipo);
+                    const registro = new Classe(...Object.values(dados));
+                    const resultado = await registro.cadastrar();
 
-                if (tipo === "produto") dados = await dadosProduto();
-                if (tipo === "categoria") dados = await dadosCategoria();
-                if (tipo === "vendedor") dados = await dadosVendedor();
+                    console.log("Cadastrado:", resultado.insertedId);
+                    break;
+                }
 
-                const registro = new Classe(...Object.values(dados));
-                const resultado = await registro.cadastrar();
+                case "2": {
+                    console.log(await entidade.listar());
+                    break;
+                }
 
-                console.log("Cadastrado:", resultado.insertedId);
+                case "3": {
+                    const id = (await perguntar("ID: ")).trim();
+                    console.log(await entidade.buscarPorId(id));
+                    break;
+                }
 
-            } else if (op === "2") {
-                console.log(await entidade.listar());
+                case "4": {
+                    const id = (await perguntar("ID: ")).trim();
 
-            } else if (op === "3") {
-                const id = await perguntar("ID: ");
-                console.log(await entidade.buscarPorId(id));
+                    console.log("Informe os novos dados.");
+                    console.log("Pressione Enter para manter um campo.");
 
-            } else if (op === "4") {
-                const id = await perguntar("ID: ");
-                console.log("Informe os novos dados:");
+                    const dados = await solicitarDados(tipo, true);
 
-                let dados;
+                    if (Object.keys(dados).length === 0) {
+                        console.log("Nenhuma alteração informada.");
+                        break;
+                    }
 
-                if (tipo === "produto") dados = await dadosProduto();
-                if (tipo === "categoria") dados = await dadosCategoria();
-                if (tipo === "vendedor") dados = await dadosVendedor();
+                    console.log(await entidade.atualizar(id, dados));
+                    break;
+                }
 
-                console.log(await entidade.atualizar(id, dados));
+                case "5": {
+                    const id = (await perguntar("ID: ")).trim();
+                    const confirma = await perguntar(
+                        "Confirma exclusão? (s/n): "
+                    );
 
-            } else if (op === "5") {
-                const id = await perguntar("ID: ");
-                console.log(await entidade.excluir(id));
+                    if (confirma.trim().toLowerCase() === "s") {
+                        console.log(await entidade.excluir(id));
+                    } else {
+                        console.log("Exclusão cancelada.");
+                    }
+                    break;
+                }
 
-            } else if (op !== "0") {
-                console.log("Opção inválida!");
+                case "0":
+                    break;
+
+                default:
+                    console.log("Opção inválida!");
             }
         } catch (erro) {
             console.error("Erro:", erro.message);
+            registrarErro(erro, `${tipo} - opção ${op}`);
         }
 
     } while (op !== "0");
@@ -122,10 +182,22 @@ async function menu() {
 
         op = (await perguntar("Escolha: ")).trim();
 
-        if (op === "1") await gerenciar("produto");
-        else if (op === "2") await gerenciar("categoria");
-        else if (op === "3") await gerenciar("vendedor");
-        else if (op !== "0") console.log("Opção inválida!");
+        try {
+            if (op === "1") {
+                await gerenciar("produto");
+            } else if (op === "2") {
+                await gerenciar("categoria");
+            } else if (op === "3") {
+                await gerenciar("vendedor");
+            } else if (op === "0") {
+                console.log("Encerrando sistema...");
+            } else {
+                console.log("Opção inválida!");
+            }
+        } catch (erro) {
+            console.error("Erro:", erro.message);
+            registrarErro(erro, "Menu principal");
+        }
 
     } while (op !== "0");
 }
